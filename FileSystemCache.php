@@ -6,21 +6,44 @@ class FileSystemCache {
 	 * Stores data in the cache
 	 * @param String $key The cache key.
 	 * @param mixed $data The data to store (will be serialized before storing)
+	 * @param String $directory A subdirectory of $cacheDir where this will be cached.  
+	 * The exact same directory must be used when retrieving data.
 	 * @param int $ttl The number of seconds until the cache expires.  Null means it doesn't expire.
 	 */
-	public static function store($key, $data, $directory = null, $ttl=null) {		
+	public static function store($key, $data, $directory = null, $ttl=null) {	
+		//pass-through when using store($key,$data,$ttl)
 		if(is_numeric($directory)) {
 			$ttl = $directory;
 			$directory = null;
 		}
 		
-		if(!file_exists(self::$cacheDir.'/')) mkdir(self::$cacheDir);
-		if($directory && !file_exists(self::$cacheDir.'/'.$directory.'/')) mkdir(self::$cacheDir.'/'.$directory);
+		if(!file_exists(self::$cacheDir.'/')) mkdir(self::$cacheDir,777,true);
+		if($directory && !file_exists(self::$cacheDir.'/'.$directory.'/')) mkdir(self::$cacheDir.'/'.$directory,777,true);
 		
 		$data = new FileSystemCacheValue($key,$data,$ttl);
 		$filename = self::getFileName($key,$directory);
 		
-		file_put_contents($filename,serialize($data));
+		//use fopen instead of file_put_contents to obtain a write lock
+		//mode 'c' lets us obtain a lock before truncating the file
+		//this gets rid of a race condition between truncating a file and getting a lock
+		$fh = fopen($filename,'c');
+		if(!$fh) return false;
+		
+		//try to lock the file
+		if(!flock($fh,LOCK_EX)) return false;
+		
+		//truncate the file
+		if(!ftruncate($fh,0)) return false;
+		
+		//write contents
+		fwrite($fh,serialize($data));
+		fflush($fh);
+		
+		//release the lock
+		flock($fh,LOCK_UN);
+		fclose($fh);
+		
+		return true;
 	}
 	
 	/**
@@ -36,25 +59,38 @@ class FileSystemCache {
 		}
 		
 		$filename = self::getFileName($key, $directory);
-		if(file_exists($filename)) {
-			$data = unserialize(file_get_contents($filename));
-			
-			//if data is expired
-			if($data->isExpired()) {
-				//delete the cache file so we don't try to retrieve it again
-				self::invalidate($key);
-				return false;
-			}
-			
-			//if data not newer than $newer_than
-			if($newer_than && $data->created < $newer_than) return false;
-			
-			return $data->value;
-		}
-		//not cached
-		else {
+		
+		if(!file_exists($filename)) return false;
+		
+		//if cached data is not newer than $newer_than
+		if($newer_than && filemtime($filename) < $newer_than) return false;
+		
+		//obtain a read lock
+		$fh = fopen($filename,'r');
+		if(!$fh) return false;
+		if(!flock($fh,LOCK_SH)) return false;
+		
+		//use file_get_contents since it is the most efficient
+		$data = @unserialize(file_get_contents($filename));
+		
+		//if we can't unserialize the data, delete the cache file
+		if(!$data) {
+			self::invalidate($key,$directory);
 			return false;
 		}
+		
+		//release lock
+		flock($fh,LOCK_UN);
+		fclose($fh);
+		
+		//if data is expired
+		if($data->isExpired()) {
+			//delete the cache file so we don't try to retrieve it again
+			self::invalidate($key,$directory);
+			return false;
+		}
+		
+		return $data->value;
 	}
 	
 	/**
