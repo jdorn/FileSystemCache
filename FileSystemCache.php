@@ -97,17 +97,44 @@ class FileSystemCache {
 	 * Invalidate a specific cache key (or entire cache)
 	 * @param String $key The cache key to invalidate or null to invalidate entire cache
 	 */
-	public static function invalidate($key=null,$directory=null) {
+	public static function invalidate($key=null,$directory=null,$recursive=false) {
+		//passthrough for invalidate($recursive)
+		if(is_bool($key)) {
+			$recursive = $key;
+			$key = null;
+		}
+		//passthrough for invalidate($directory,$recursive)
+		if(is_bool($directory)) {
+			$recursive = $directory;
+			$directory = $key;
+			$key = null;
+		}
+		
 		//if invalidating single cache entry
 		if($key) {
 			$filename = self::getFileName($key,$directory);
 			if(file_exists($filename)) {
 				unlink($filename);
 			}
+			return true;
 		}
 		//if invalidating entire directory
-		else {
+		else {			
 			array_map("unlink", glob(self::$cacheDir.'/'.($directory? $directory.'/':'').'*.cache'));
+			
+			//if recursively invalidating
+			if($recursive) {
+				$subdirs = glob(self::$cacheDir.'/'.($directory? $directory.'/':'').'*',GLOB_ONLYDIR);
+				
+				foreach($subdirs as $dir) {
+					$dir = basename($dir);
+					
+					//skip all subdirectory that start with '.'
+					if($dir[0] == '.') continue;
+					
+					self::invalidate($dir,true);
+				}
+			}
 		}
 	}
 	

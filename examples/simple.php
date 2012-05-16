@@ -1,5 +1,5 @@
 <?php
-require_once('FileSystemCache.php');
+require_once('../FileSystemCache.php');
 
 //try to retrieve data from cache
 $data = FileSystemCache::retrieve('my_key');
