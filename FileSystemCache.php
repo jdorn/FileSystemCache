@@ -73,15 +73,15 @@ class FileSystemCache {
 		//use file_get_contents since it is the most efficient
 		$data = @unserialize(file_get_contents($filename));
 		
+		//release lock
+		flock($fh,LOCK_UN);
+		fclose($fh);
+		
 		//if we can't unserialize the data, delete the cache file
 		if(!$data) {
 			self::invalidate($key,$directory);
 			return false;
 		}
-		
-		//release lock
-		flock($fh,LOCK_UN);
-		fclose($fh);
 		
 		//if data is expired
 		if($data->isExpired()) {
