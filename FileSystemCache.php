@@ -29,15 +29,15 @@ class FileSystemCache {
 		$fh = fopen($filename,'c');
 		if(!$fh) return false;
 		
-		//try to lock the file
-		if(!flock($fh,LOCK_EX)) return false;
-		
-		//truncate the file
-		if(!ftruncate($fh,0)) return false;
-		
-		//write contents
-		fwrite($fh,serialize($data));
-		fflush($fh);
+		//lock the file with an exclusive lock
+		if(flock($fh,LOCK_EX)) {
+			//truncate the file
+			if(ftruncate($fh,0)) {
+				//write contents
+				fwrite($fh,serialize($data));
+				fflush($fh);
+			}
+		}
 		
 		//release the lock
 		flock($fh,LOCK_UN);
@@ -65,12 +65,15 @@ class FileSystemCache {
 		//if cached data is not newer than $newer_than
 		if($newer_than && filemtime($filename) < $newer_than) return false;
 		
-		//obtain a read lock
+		//obtain a shared read lock
 		$fh = fopen($filename,'r');
 		if(!$fh) return false;
-		if(!flock($fh,LOCK_SH)) return false;
+		if(!flock($fh,LOCK_SH)) {
+			fclose($fh);
+			return false;
+		}
 		
-		//use file_get_contents since it is the most efficient
+		//use file_get_contents since it is faster than fread
 		$data = @unserialize(file_get_contents($filename));
 		
 		//release lock
