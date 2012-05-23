@@ -123,19 +123,22 @@ class FileSystemCache {
 		}
 		//if invalidating entire directory
 		else {			
-			array_map("unlink", glob(self::$cacheDir.'/'.($directory? $directory.'/':'').'*.cache'));
+			//directory or entire cache
+			$directory = $directory? $directory.'/' : '';
+			
+			array_map("unlink", glob(self::$cacheDir.'/'.$directory.'*.cache'));
 			
 			//if recursively invalidating
 			if($recursive) {
-				$subdirs = glob(self::$cacheDir.'/'.($directory? $directory.'/':'').'*',GLOB_ONLYDIR);
+				$subdirs = glob(self::$cacheDir.'/'.$directory.'*',GLOB_ONLYDIR);
 				
 				foreach($subdirs as $dir) {
 					$dir = basename($dir);
 					
-					//skip all subdirectory that start with '.'
+					//skip all subdirectories that start with '.'
 					if($dir[0] == '.') continue;
 					
-					self::invalidate($dir,true);
+					self::invalidate($directory.$dir,true);
 				}
 			}
 		}
