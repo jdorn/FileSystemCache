@@ -6,9 +6,9 @@ class FileSystemCache {
 	 * Stores data in the cache
 	 * @param String $key The cache key.
 	 * @param mixed $data The data to store (will be serialized before storing)
-	 * @param String $directory A subdirectory of $cacheDir where this will be cached.  
+	 * @param String $directory A subdirectory of $cacheDir where this will be cached.  (optional)
 	 * The exact same directory must be used when retrieving data.
-	 * @param int $ttl The number of seconds until the cache expires.  Null means it doesn't expire.
+	 * @param int $ttl The number of seconds until the cache expires.  (optional)
 	 */
 	public static function store($key, $data, $directory = null, $ttl=null) {	
 		//pass-through when using store($key,$data,$ttl)
@@ -49,8 +49,9 @@ class FileSystemCache {
 	/**
 	 * Retrieve data from cache
 	 * @param String $key The cache key
+	 * @param String $directory The cache directory (optional)
 	 * @param int $newer_than If passed, only return if the cached value was created after this time
-	 * @return mixed The cached data or FALSE if not found
+	 * @return mixed The cached data or FALSE if not found or expired
 	 */
 	public static function retrieve($key, $directory=null, $newer_than=false) {	
 		if(is_numeric($directory)) {
@@ -96,9 +97,130 @@ class FileSystemCache {
 		return $data->value;
 	}
 	
+	
 	/**
-	 * Invalidate a specific cache key (or entire cache)
-	 * @param String $key The cache key to invalidate or null to invalidate entire cache
+	 * Atomically retrieve data from cache, modify it, and store it back
+	 * @param String $key The cache key
+	 * @param String $directory The cache directory (optional)
+	 * @param Closure $callback A closure function to modify the cache value.  
+	 * Takes the old value as an argument and returns new value.
+	 * If this function returns false, the cached value will be invalidated.
+	 * @param bool $resetTtl If set to true, the expiration date will be recalculated using the previous TTL
+	 * @return mixed The new value if it was stored successfully or false if it wasn't
+	 */
+	public static function getAndModify($key, $directory=null, $callback=null, $resetTtl=false) {
+		//passthrough for key, callback [, resetTtl]
+		if(is_object($directory)) {
+			if(is_bool($callback)) $resetTtl = $callback;
+			$callback = $directory;
+			$directory = null;
+		}
+		
+		if(!is_object($callback) || !($callback instanceof Closure)) {
+			throw new Exception("Missing or Invalid callback method");
+		}
+		
+		$filename = self::getFileName($key, $directory);
+		
+		if(!file_exists($filename)) return false;
+		
+		//obtain a write lock
+		$fh = fopen($filename,'c+');
+		if(!$fh) return false;
+		if(!flock($fh,LOCK_EX)) {
+			fclose($fh);
+			
+			return false;
+		}
+		
+		//get the existing file contents
+		$data = @unserialize(stream_get_contents($fh));
+		
+		//if we can't unserialize the data
+		if(!$data || !($data instanceof FileSystemCacheValue)) {
+			//release lock
+			flock($fh,LOCK_UN);
+			fclose($fh);
+			
+			//delete the cache file so we don't try to retrieve it again
+			self::invalidate($key,$directory);
+			
+			return false;
+		}
+		
+		//if data is expired
+		if($data->isExpired()) {
+			//release lock
+			flock($fh,LOCK_UN);
+			fclose($fh);
+			
+			//delete the cache file so we don't try to retrieve it again
+			self::invalidate($key,$directory);
+			
+			return false;
+		}
+		
+		//get new value from callback function
+		$new_value = $callback($data->value);
+		$data->value = $new_value;
+		
+		//if value didn't change
+		if($new_value === $data->value) {
+			//release lock
+			flock($fh,LOCK_UN);
+			fclose($fh);
+			
+			return $new_value;
+		}
+		
+		//if the callback function returns false
+		if($new_value === false) {
+			//release lock
+			flock($fh,LOCK_UN);
+			fclose($fh);
+			
+			//delete the cache file so we don't try to retrieve it again
+			self::invalidate($key,$directory);
+			return false;
+		}
+		
+		//if we're resetting the ttl to now
+		if($resetTtl) {
+			$data->created = time();
+			if($data->ttl) {
+				$data->expires = $data->created + $data->ttl;
+			}
+		}
+		
+		//truncate the file
+		if(!ftruncate($fh,0)) {
+			flock($fh,LOCK_UN);
+			fclose($fh);
+			
+			return false;
+		}
+		
+		//write contents
+		fwrite($fh,serialize($data));
+		fflush($fh);
+		
+		//release the lock
+		flock($fh,LOCK_UN);
+		fclose($fh);
+		
+		//return the new value after modifying
+		return $new_value;
+	}
+	
+	/**
+	 * Invalidate a specific cache key, a specific directory, or entire cache.
+	 * Uses: invalidate('key') or invalidate('key','dir') - invalidate specific cache key
+	 *       invalidate('dir',true) - invalidate directory recursively (false for non-recursive)
+	 *       invalidate(true) - invalidate entire cache recursively (false for non-recursive)
+	 * 
+	 * @param String $key The cache key to invalidate (optional)
+	 * @param String $directory The cache directory (optional)
+	 * @param bool $recursive If set to true and invalidating
 	 */
 	public static function invalidate($key=null,$directory=null,$recursive=false) {
 		//passthrough for invalidate($recursive)
