@@ -6,8 +6,21 @@ A simple PHP class for caching data in the filesystem.
 Usage
 ===============
 
-The FileSystemCache class has 3 public methods: store, retrieve, and invalidate.  
-It also has a static property $cacheDir that holds the cache directory location (defaults to cache/).
+The FileSystemCache class has 4 public methods: store, retrieve, invalidate, and getAndModify.  
+It also has a static property $cacheDir that holds the cache directory location.
+
+Changing the Cache Directory
+---------------
+
+By default, all cached data is stored in the "cache" directory relative to the currently executing script.
+You can change this by setting the $cacheDir static property.
+
+```php
+<?php
+require_once('FileSystemCache.php');
+
+FileSystemCache::$cacheDir = '/tmp/cache';
+```
 
 
 Store
