@@ -7,17 +7,53 @@ A simple PHP class for caching data in the filesystem.  Major features include:
 *    Support for "Newer Than" parameter when retrieving data.
 *    Every call is an atomic operation with proper file locking.  You don't need to worry about race conditions when storing and retrieving data from multiple threads concurrently.
 *    Can group cache keys together for easy invalidation (e.g. if you use the cache key structure "user_data/myusername/account_history", you can invalidate all "user_data/" or "user_data/myusername/" in one call).
+*    Works with Composer
+*    PHPUnit tests
+
+[![Build Status](https://secure.travis-ci.org/jdorn/FileSystemCache.png)](http://travis-ci.org/jdorn/FileSystemCache)
+
+Getting Started
+------------------
+FileSystemCache is a single file and can be installed with Composer or downloaded manually.
+
+### With Composer
+
+Add the following to your `composer.json` file in your document root (or create it if you don't have one yet).
+```js
+{
+	"require": {
+		"jdorn/file-system-cache": "dev-master"
+	}
+}
+```
+
+Then run the following:
+```
+composer install
+```
+
+FileSystemCache works with Composer's auto loading script.  Make sure you have the following in your project.
+```php
+include 'vendor/autoload.php';
+```
+
+
+### Manually
+
+You just need to require `lib/FileSystemCache.php` to use FileSystemCache.
+
+```php
+require_once("path/to/FileSystemCache.php");
+```
 
 Changing the Cache Directory
----------------
+-----------------------
 
 By default, all cached data is stored in the "cache" directory relative to the currently executing script.
 You can change this by setting the $cacheDir static property.
 
 ```php
 <?php
-require_once('FileSystemCache.php');
-
 FileSystemCache::$cacheDir = '/tmp/cache';
 ```
 
