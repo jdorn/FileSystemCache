@@ -32,9 +32,11 @@ class FileSystemCacheTest extends PHPUnit_Framework_TestCase {
     }
       
     /**
-     * @dataProvider keyProvider
+     * @dataProvider keyDataProvider
      */
-    function testStore(FileSystemCacheKey $key) {  
+    function testStore($key_data, $group) {  
+        $key = FileSystemCache::generateCacheKey($key_data, $group);
+        
         $data = 'test'.microtime(true);
         
         FileSystemCache::invalidate($key);
@@ -67,7 +69,7 @@ class FileSystemCacheTest extends PHPUnit_Framework_TestCase {
         $this->assertFalse(FileSystemCache::retrieve($key));
     }
     
-    function testNewerThan() {
+    function testRetrieveNewerThan() {
         $key = FileSystemCache::generateCacheKey('newer than test');
         $data = 'test newer than data';
         FileSystemCache::store($key, $data);
@@ -76,6 +78,20 @@ class FileSystemCacheTest extends PHPUnit_Framework_TestCase {
         $this->assertEquals($data, FileSystemCache::retrieve($key, time() - 5));
         
         FileSystemCache::invalidate($key);
+        $this->assertFalse(FileSystemCache::retrieve($key));
+    }
+    
+    function testGetAndModifyReturnFalse() {
+        $key = FileSystemCache::generateCacheKey('get and modify key');
+        $data = 'get and modify data';
+        
+        FileSystemCache::store($key, $data, 1);
+        $this->assertEquals($data, FileSystemCache::retrieve($key));
+        
+        FileSystemCache::getAndModify($key, function($value) {
+            return false;
+        });
+        
         $this->assertFalse(FileSystemCache::retrieve($key));
     }
     
@@ -98,9 +114,9 @@ class FileSystemCacheTest extends PHPUnit_Framework_TestCase {
         $this->assertFalse(FileSystemCache::retrieve($key));
     }
     
-    function testGetAndModifyUpdateTtl() {
-        $key = FileSystemCache::generateCacheKey('get and modify update ttl key');
-        $data = 'get and modify update ttl data';
+    function testGetAndModifyResetTtl() {
+        $key = FileSystemCache::generateCacheKey('get and modify reset ttl key');
+        $data = 'get and modify reset ttl data';
         
         FileSystemCache::store($key, $data, 3);
         sleep(2);
@@ -120,6 +136,28 @@ class FileSystemCacheTest extends PHPUnit_Framework_TestCase {
         sleep(2);
         
         $this->assertFalse(FileSystemCache::retrieve($key));
+    }
+    
+    function testGetAndModifyUnchanged() {
+        $key = FileSystemCache::generateCacheKey('get and modify unchanged');
+        $data = 'get and modify unchanged';
+        
+        FileSystemCache::store($key, $data);
+        
+        $return = FileSystemCache::getAndModify($key, function($value) {
+            return $value;
+        });
+        
+        $this->assertEquals($data, $return);
+        
+        $this->assertEquals($data, FileSystemCache::retrieve($key));
+    }
+    
+    /**
+     * @expectedException Exception
+     */
+    function testHackedGroupInvalidation() {
+        FileSystemCache::invalidateGroup('this/../../is/a/hack');
     }
     
     function testGroupInvalidation() {
