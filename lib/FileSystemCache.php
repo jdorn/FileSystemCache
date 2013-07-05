@@ -193,7 +193,7 @@ class FileSystemCache {
 			//make sure the directory exists and is writable
 			$directory = dirname($filename);
 			if(!file_exists($directory)) {
-				if(!mkdir($directory,777,true)) {
+				if(!mkdir($directory,0777,true)) {
 					return false;
 				}
 			}
